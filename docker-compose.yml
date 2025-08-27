@@ -1,0 +1,83 @@
+services:
+  backend:
+    build:
+      context: .
+      args:
+        ENV: ${ENV:-development}  # default development, can be switched to production by setting ENV=production
+    ports:
+      - '8001:8001'
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - ENVIRONMENT=${ENV:-development}
+      - CORS_ORIGINS=["https://clio-x-mvg-portal-i0991n6xx-ciferresearchs-projects.vercel.app","http://localhost:3000","http://localhost:8000"]
+      - PORT=8001
+      # Optional: Add API key for production
+      - API_KEY=${API_KEY:-}
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
+    volumes:
+      - ./src:/app/src
+
+  ollama:
+    image: ollama/ollama:latest
+    command: ["serve"]
+
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+
+# version: '3.8'
+
+# services:
+#   chatbot-api:
+#     build: .
+#     ports:
+#       - '8001:8001'
+#     environment:
+#       - OLLAMA_URL=http://ollama:11434
+#       - ENVIRONMENT=development
+#       - CORS_ORIGINS=["http://localhost:3000"]
+#       - PORT=8001
+#     restart: unless-stopped
+#     depends_on:
+#       - ollama
+#     healthcheck:
+#       test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 40s
+
+#   ollama:
+#     image: ollama/ollama:latest
+#     command: ["serve"] 
+#     ports:
+#       - '11434:11434'
+#     volumes:
+#       - ollama_data:/root/.ollama
+#     environment:
+#       - OLLAMA_KEEP_ALIVE=24h
+#     restart: unless-stopped
+#     # Uncomment for GPU support
+#     # deploy:
+#     #   resources:
+#     #     reservations:
+#     #       devices:
+#     #         - driver: nvidia
+#     #           count: 1
+#     #           capabilities: [gpu]
+
+# volumes:
+#   ollama_data: 
