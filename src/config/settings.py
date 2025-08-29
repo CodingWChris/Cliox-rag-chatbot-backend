@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     cors_origins: List[str] = []
     
     # Session Management
-    session_cleanup_interval: int = 1800  # 30 minutes in seconds
-    max_session_age: int = 7200  # 2 hours in seconds
+    session_cleanup_interval: int = 1800  # 30 minutes in seconds -> do the idle check scan every 30 min
+    max_session_age: int = 3600  # 1 hours in seconds -> sesson idle for 1h, then delete session to free memory
     
     # Security
     api_key: Optional[str] = None
