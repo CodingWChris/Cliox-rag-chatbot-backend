@@ -87,9 +87,17 @@ class SessionService:
             del self.sessions[session_id]
             # Remove from vector store
             await vector_service.remove_session(session_id)
+            
+            # Also clean up conversation data from S3
+            try:
+                from .s3_conversation_service import conversation_storage
+                await conversation_storage.delete_session(session_id)
+                logger.debug(f"🗑️ Cleaned up S3 conversation data for session {session_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to clean up S3 data for session {session_id}: {e}")
         
         if expired_sessions:
-            logger.info(f"🧹 Cleaned up {len(expired_sessions)} expired sessions")
+            logger.info(f"🧹 Cleaned up {len(expired_sessions)} expired sessions (including S3 data)")
         
         return len(expired_sessions)
     
@@ -100,7 +108,16 @@ class SessionService:
             del self.sessions[session_id]
             # Remove from vector store (ChromaDB collection)
             await vector_service.remove_session(session_id)
-            logger.info(f"🗑️ Manually removed session {session_id}")
+            
+            # Also clean up conversation data from S3
+            try:
+                from .s3_conversation_service import conversation_storage
+                await conversation_storage.delete_session(session_id)
+                logger.info(f"🗑️ Manually removed session {session_id} (including S3 data)")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to clean up S3 data for session {session_id}: {e}")
+                logger.info(f"🗑️ Manually removed session {session_id} (S3 cleanup failed)")
+            
             return True
         else:
             logger.info(f"ℹ️ Session {session_id} not found for removal")

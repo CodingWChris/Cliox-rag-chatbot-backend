@@ -13,6 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from .config.settings import settings
 from .api.session.knowledge import router as knowledge_router
 from .api.session.chat import router as chat_router
+from .api.session.conversation import router as conversation_router
 from .api.health import router as health_router
 from .api.monitoring import router as monitoring_router
 from .middleware.monitoring import MonitoringMiddleware
@@ -79,6 +80,7 @@ app.add_middleware(MonitoringMiddleware)
 # Include routers
 app.include_router(knowledge_router, prefix="/api/v1/session", tags=["knowledge"])
 app.include_router(chat_router, prefix="/api/v1/session", tags=["chat"])
+app.include_router(conversation_router, prefix="/api/v1", tags=["conversation"])
 app.include_router(health_router, prefix="/api", tags=["health"])
 app.include_router(monitoring_router, prefix="/api/v1/monitoring", tags=["monitoring"])
 
