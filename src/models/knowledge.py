@@ -48,4 +48,17 @@ class ChatResponse(BaseModel):
     sources: Optional[List[ChatSource]] = None
     metadata: Optional[ChatMetadata] = None
     error: Optional[str] = None
-    message: Optional[str] = None 
+    message: Optional[str] = None
+
+# Streaming chat models
+class StreamChatRequest(BaseModel):
+    message: str
+    config: Optional[Dict[str, Any]] = {}
+
+class StreamChatChunk(BaseModel):
+    """Single chunk of streaming chat response"""
+    content: str
+    done: bool = False
+    sources: Optional[List[ChatSource]] = None
+    metadata: Optional[ChatMetadata] = None
+    error: Optional[str] = None 

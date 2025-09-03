@@ -6,6 +6,7 @@ from .session_service import session_service
 from .ollama_service import ollama_service, OllamaRequest
 from .vector_service import vector_service
 from ..config.settings import settings
+from ..models.knowledge import StreamChatChunk
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,104 @@ class RAGService:
                 success=False,
                 error="processing_error",
                 message=str(e)
+            )
+
+    async def process_chat_stream(
+        self, 
+        session_id: str, 
+        message: str, 
+        config: Dict[str, Any]
+    ):
+        """Process chat message using RAG pipeline with streaming response"""
+        start_time = time.time()
+        
+        try:
+            # 1. Get session knowledge
+            knowledge = await session_service.get_knowledge(session_id)
+            
+            logger.info(f"🔍 Processing streaming chat for session {session_id}: \"{message}\"")
+            
+            if not knowledge:
+                # Fallback to general LLM without RAG
+                logger.info("📝 No knowledge base found - using general LLM mode")
+                prompt = self._build_general_prompt(message)
+                relevant_chunks = []
+            else:
+                # Use RAG with knowledge base
+                logger.info(f"📚 Using knowledge base with {len(knowledge.chunks)} chunks")
+                
+                # 2. Search for relevant chunks using semantic search
+                logger.info(f"🔍 Searching for relevant chunks with query: '{message}'")
+                relevant_chunks = vector_service.search_similar(
+                    message, 
+                    knowledge.chunks, 
+                    config.get("top_k", 3),
+                    session_id  # Pass session_id for optimized search
+                )
+                
+                logger.info(f"📄 Found {len(relevant_chunks)} relevant chunks")
+                if relevant_chunks:
+                    for i, chunk in enumerate(relevant_chunks, 1):
+                        logger.info(f"  {i}. Similarity: {chunk.similarity:.3f} | Source: {chunk.metadata.get('source', 'Unknown')}")
+                
+                # 3. Check if any relevant chunks were found
+                if len(relevant_chunks) == 0:
+                    # No relevant chunks found - fall back to general mode
+                    logger.info("🔄 No relevant chunks found - falling back to general LLM mode")
+                    prompt = self._build_general_prompt(message)
+                else:
+                    # Build RAG prompt with context
+                    context = self._build_context(relevant_chunks)
+                    prompt = self._build_rag_prompt(context, message)
+            
+            # 4. Call Ollama with streaming
+            ollama_request = OllamaRequest(
+                model=config.get("model", settings.default_model),
+                prompt=prompt,
+                temperature=config.get("temperature", 0.7),
+                max_tokens=config.get("max_tokens", 500)
+            )
+            
+            # Build sources list for metadata
+            sources = [
+                ChatSource(
+                    source=chunk.metadata.get("source", "Unknown"),
+                    relevance_score=chunk.score,
+                    content_preview=chunk.content[:100] + "..." if len(chunk.content) > 100 else chunk.content
+                )
+                for chunk in relevant_chunks
+            ]
+            
+            # Stream the response
+            async for chunk in ollama_service.generate_stream(ollama_request):
+                processing_time = int((time.time() - start_time) * 1000)
+                
+                # Only include sources and metadata in the first chunk
+                if chunk.done:
+                    metadata = ChatMetadata(
+                        chunks_retrieved=len(relevant_chunks),
+                        processing_time_ms=processing_time,
+                        model_used=chunk.model
+                    )
+                else:
+                    metadata = None
+                
+                yield StreamChatChunk(
+                    content=chunk.response,
+                    done=chunk.done,
+                    sources=sources if chunk.done else None,
+                    metadata=metadata if chunk.done else None
+                )
+                
+                if chunk.done:
+                    break
+        
+        except Exception as e:
+            logger.error(f"❌ Streaming chat processing error for session {session_id}: {e}")
+            yield StreamChatChunk(
+                content="",
+                done=True,
+                error="processing_error"
             )
     
     def _build_context(self, chunks) -> str:
