@@ -42,10 +42,37 @@ class ChatMetadata(BaseModel):
     
     model_config = {"protected_namespaces": ()}
 
+# ==============================================
+# LEGACY RESPONSE MODELS
+# ==============================================
+# These models are used for backward compatibility with non-streaming responses
+
 class ChatResponse(BaseModel):
+    """LEGACY: Complete chat response model for non-streaming responses"""
     success: bool
     response: Optional[str] = None
     sources: Optional[List[ChatSource]] = None
     metadata: Optional[ChatMetadata] = None
     error: Optional[str] = None
+
+# ==============================================
+# STREAMING RESPONSE MODELS
+# ==============================================
+# These models are used for real-time streaming responses
+
+# Streaming models for SSE
+class StreamChunk(BaseModel):
+    """
+    Streaming chunk model for Server-Sent Events
+    
+    Types:
+    - 'status': Processing status updates (e.g., "Searching knowledge base...")
+    - 'chunk': Text content chunks as they're generated
+    - 'complete': Signal that response generation is finished
+    - 'error': Error information if something goes wrong
+    """
+    type: str  # 'status', 'chunk', 'complete', 'error'
+    content: Optional[str] = None
+    sources: Optional[List[ChatSource]] = None
+    metadata: Optional[Dict[str, Any]] = None
     message: Optional[str] = None 

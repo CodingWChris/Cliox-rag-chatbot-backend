@@ -12,7 +12,7 @@ from ...services.conversation_summarizer import conversation_summarizer
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/conversation", tags=["conversation"])
+router = APIRouter(prefix="/conversation", tags=["conversation"])
 
 @router.get("/{session_id}/history")
 async def get_conversation_history(
