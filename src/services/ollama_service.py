@@ -3,7 +3,6 @@ import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 from ..config.settings import settings
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -80,62 +79,6 @@ class OllamaService:
         
         except Exception as e:
             logger.error(f"❌ Ollama generation error: {e}")
-            raise
-
-    async def generate_stream(self, request: OllamaRequest):
-        """Generate streaming response using Ollama API"""
-        logger.info(f"🦙 Calling Ollama with streaming for model: {request.model}")
-        
-        session = await self._get_session()
-        
-        payload = {
-            "model": request.model,
-            "prompt": request.prompt,
-            "stream": True,
-            "options": {
-                "temperature": request.temperature,
-                "num_ctx": request.max_tokens,
-                "top_k": 40,
-                "top_p": 0.9
-            }
-        }
-        
-        try:
-            logger.info(f"📡 Sending streaming request to {self.ollama_url}/api/generate")
-            async with session.post(
-                f"{self.ollama_url}/api/generate",
-                json=payload
-            ) as response:
-                logger.info(f"📡 Received streaming response with status: {response.status}")
-                
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise Exception(f"Ollama API error: {response.status} - {error_text}")
-                
-                # Stream the response
-                async for line in response.content:
-                    if line:
-                        try:
-                            data = line.decode('utf-8').strip()
-                            if data:
-                                # Ollama returns JSON lines directly, not SSE format
-                                chunk_data = json.loads(data)
-                                yield OllamaResponse(
-                                    response=chunk_data.get("response", ""),
-                                    model=chunk_data.get("model", request.model),
-                                    done=chunk_data.get("done", False)
-                                )
-                                
-                                if chunk_data.get("done", False):
-                                    break
-                        except json.JSONDecodeError:
-                            continue
-                        except Exception as e:
-                            logger.error(f"❌ Error parsing streaming response: {e}")
-                            continue
-        
-        except Exception as e:
-            logger.error(f"❌ Ollama streaming generation error: {e}")
             raise
     
     async def list_models(self) -> List[str]:
