@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple SSE Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .output { background: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0; }
+        .error { color: red; }
+        .success { color: green; }
+        button { padding: 10px 20px; margin: 5px; }
+        input, textarea { width: 100%; padding: 8px; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>Simple SSE Test</h1>
+    
+    <div>
+        <label>API Key:</label>
+        <input type="password" id="apiKey" value="test-key-123" />
+    </div>
+    
+    <div>
+        <label>Session ID:</label>
+        <input type="text" id="sessionId" value="test_session_123" />
+    </div>
+    
+    <div>
+        <label>Message:</label>
+        <textarea id="message">Hello! Tell me about AI.</textarea>
+    </div>
+    
+    <button onclick="testSSE()">Test SSE Chat</button>
+    <button onclick="clearOutput()">Clear</button>
+    
+    <div class="output" id="output">Ready to test...</div>
+
+    <script>
+        async function testSSE() {
+            const output = document.getElementById('output');
+            const apiKey = document.getElementById('apiKey').value;
+            const sessionId = document.getElementById('sessionId').value;
+            const message = document.getElementById('message').value;
+            
+            output.innerHTML = 'Testing SSE...<br>';
+            
+            try {
+                // First upload some knowledge
+                output.innerHTML += '📚 Uploading knowledge...<br>';
+                const uploadResponse = await fetch('http://localhost:8001/api/v1/session/knowledge/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-ID': sessionId,
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        knowledge_chunks: [{
+                            id: 'test1',
+                            content: 'This is a test knowledge chunk about artificial intelligence.',
+                            metadata: { source: 'test', domain: 'AI' }
+                        }]
+                    })
+                });
+                
+                if (!uploadResponse.ok) {
+                    throw new Error(`Upload failed: ${uploadResponse.status}`);
+                }
+                
+                output.innerHTML += '✅ Knowledge uploaded<br>';
+                
+                // Now test SSE chat
+                output.innerHTML += '💬 Testing SSE chat...<br>';
+                
+                const response = await fetch('http://localhost:8001/api/v1/session/chat/stream', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-ID': sessionId,
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        config: {
+                            model: 'llama3.2:1b',
+                            temperature: 0.7,
+                            max_tokens: 100
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Chat failed: ${response.status} - ${response.statusText}`);
+                }
+                
+                output.innerHTML += '✅ SSE connection established!<br>';
+                output.innerHTML += '📝 Response:<br>';
+                
+                // Process streaming response
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.error) {
+                                    output.innerHTML += `<span class="error">❌ Error: ${data.error}</span><br>`;
+                                    return;
+                                }
+                                
+                                if (data.content) {
+                                    output.innerHTML += data.content;
+                                }
+                                
+                                if (data.done) {
+                                    output.innerHTML += '<br><span class="success">✅ Stream completed!</span><br>';
+                                    
+                                    if (data.sources) {
+                                        output.innerHTML += `<br>📚 Sources: ${data.sources.length}<br>`;
+                                    }
+                                    
+                                    if (data.metadata) {
+                                        output.innerHTML += `<br>📊 Processing time: ${data.metadata.processing_time_ms}ms<br>`;
+                                    }
+                                    
+                                    return;
+                                }
+                                
+                            } catch (error) {
+                                output.innerHTML += `<span class="error">⚠️ Parse error: ${error.message}</span><br>`;
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                output.innerHTML += `<span class="error">❌ Error: ${error.message}</span><br>`;
+                console.error('Error:', error);
+            }
+        }
+        
+        function clearOutput() {
+            document.getElementById('output').innerHTML = 'Ready to test...';
+        }
+    </script>
+</body>
+</html> 

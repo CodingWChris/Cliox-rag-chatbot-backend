@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSE Chat Demo - RAG Backend</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        
+        .btn:hover {
+            background: #0056b3;
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        
+        .chat-output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 20px;
+            margin-top: 20px;
+            min-height: 200px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: 600;
+        }
+        
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .response-info {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        
+        .response-info h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        
+        .sources-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .sources-list li {
+            background: white;
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 3px;
+            border-left: 3px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 SSE Chat Demo</h1>
+            <p>Real-time streaming chat with RAG Backend using Server-Sent Events</p>
+        </div>
+        
+        <form id="chatForm">
+            <div class="form-group">
+                <label for="apiKey">API Key:</label>
+                <input type="password" id="apiKey" placeholder="Enter your API key" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="sessionId">Session ID:</label>
+                <input type="text" id="sessionId" placeholder="Enter session ID or leave empty to generate" value="">
+            </div>
+            
+            <div class="form-group">
+                <label for="message">Message:</label>
+                <textarea id="message" placeholder="Enter your message here..." required>Hello! Can you tell me about the knowledge base?</textarea>
+            </div>
+            
+            <div class="config-grid">
+                <div class="form-group">
+                    <label for="model">Model:</label>
+                    <select id="model">
+                        <option value="llama3.2:1b">llama3.2:1b</option>
+                        <option value="llama3.2:3b">llama3.2:3b</option>
+                        <option value="llama3.2:7b">llama3.2:7b</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="temperature">Temperature:</label>
+                    <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7">
+                    <span id="tempValue">0.7</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="maxTokens">Max Tokens:</label>
+                    <input type="number" id="maxTokens" min="50" max="2000" value="500">
+                </div>
+                
+                <div class="form-group">
+                    <label for="topK">Top K (Chunks):</label>
+                    <input type="number" id="topK" min="1" max="10" value="3">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" class="btn" id="submitBtn">💬 Start Chat</button>
+                <button type="button" class="btn btn-secondary" id="stopBtn" disabled>⏹️ Stop</button>
+                <button type="button" class="btn btn-secondary" id="clearBtn">🗑️ Clear</button>
+            </div>
+        </form>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div class="chat-output" id="chatOutput">Ready to chat! Click "Start Chat" to begin...</div>
+        
+        <div id="responseInfo" class="response-info" style="display: none;"></div>
+    </div>
+
+    <script>
+        class SSEChat {
+            constructor() {
+                this.baseUrl = 'http://localhost:8001';
+                this.eventSource = null;
+                this.isStreaming = false;
+                this.currentResponse = '';
+                this.sources = [];
+                this.metadata = {};
+                
+                this.initializeEventListeners();
+            }
+            
+            initializeEventListeners() {
+                // Form submission
+                document.getElementById('chatForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.startChat();
+                });
+                
+                // Stop button
+                document.getElementById('stopBtn').addEventListener('click', () => {
+                    this.stopChat();
+                });
+                
+                // Clear button
+                document.getElementById('clearBtn').addEventListener('click', () => {
+                    this.clearOutput();
+                });
+                
+                // Temperature slider
+                document.getElementById('temperature').addEventListener('input', (e) => {
+                    document.getElementById('tempValue').textContent = e.target.value;
+                });
+                
+                // Generate session ID if empty
+                document.getElementById('sessionId').addEventListener('focus', (e) => {
+                    if (!e.target.value) {
+                        e.target.value = this.generateSessionId();
+                    }
+                });
+            }
+            
+            generateSessionId() {
+                return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            }
+            
+            async startChat() {
+                const apiKey = document.getElementById('apiKey').value;
+                const sessionId = document.getElementById('sessionId').value;
+                const message = document.getElementById('message').value;
+                
+                if (!apiKey || !sessionId || !message) {
+                    alert('Please fill in all required fields');
+                    return;
+                }
+                
+                this.showStatus('connecting', 'Connecting to SSE endpoint...');
+                this.setStreamingState(true);
+                this.clearOutput();
+                
+                try {
+                    // First, upload some test knowledge
+                    await this.uploadTestKnowledge(apiKey, sessionId);
+                    
+                    // Start SSE chat
+                    await this.startSSEChat(apiKey, sessionId, message);
+                    
+                } catch (error) {
+                    this.showStatus('error', `Error: ${error.message}`);
+                    this.setStreamingState(false);
+                }
+            }
+            
+            async uploadTestKnowledge(apiKey, sessionId) {
+                const knowledgeData = {
+                    knowledge_chunks: [
+                        {
+                            id: "test_chunk_1",
+                            content: "This is a test knowledge chunk about artificial intelligence and machine learning. AI systems can learn from data and make predictions.",
+                            metadata: {"source": "test_document", "domain": "AI"}
+                        },
+                        {
+                            id: "test_chunk_2",
+                            content: "RAG (Retrieval-Augmented Generation) is a technique that combines retrieval with generation. It helps AI models provide more accurate and relevant responses.",
+                            metadata: {"source": "test_document", "domain": "RAG"}
+                        },
+                        {
+                            id: "test_chunk_3",
+                            content: "Server-Sent Events (SSE) is a web standard that allows servers to push data to web clients. It's perfect for real-time streaming responses.",
+                            metadata: {"source": "test_document", "domain": "SSE"}
+                        }
+                    ]
+                };
+                
+                const response = await fetch(`${this.baseUrl}/api/v1/session/knowledge/upload`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-ID': sessionId,
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify(knowledgeData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Knowledge upload failed: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                this.appendToOutput(`📚 Knowledge uploaded: ${result.chunks_processed} chunks\n`);
+            }
+            
+            async startSSEChat(apiKey, sessionId, message) {
+                const config = {
+                    model: document.getElementById('model').value,
+                    temperature: parseFloat(document.getElementById('temperature').value),
+                    max_tokens: parseInt(document.getElementById('maxTokens').value),
+                    top_k: parseInt(document.getElementById('topK').value)
+                };
+                
+                const chatData = { message, config };
+                
+                this.appendToOutput(`💬 Starting chat with: "${message}"\n`);
+                this.appendToOutput(`⚙️  Config: ${JSON.stringify(config, null, 2)}\n`);
+                this.appendToOutput(`📡 Connecting to SSE endpoint...\n`);
+                this.appendToOutput(`-`.repeat(50) + `\n`);
+                
+                // Use fetch with streaming for SSE
+                const response = await fetch(`${this.baseUrl}/api/v1/session/chat/stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-ID': sessionId,
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify(chatData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Chat request failed: ${response.status}`);
+                }
+                
+                // Process the streaming response
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                this.eventSource = { close: () => reader.cancel() };
+                
+                this.showStatus('connected', 'SSE connection established!');
+                this.appendToOutput(`✅ SSE connection established!\n`);
+                this.appendToOutput(`📝 Response:\n`);
+                
+                // Read the stream
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.error) {
+                                    this.appendToOutput(`❌ Error: ${data.error}\n`);
+                                    this.stopChat();
+                                    return;
+                                }
+                                
+                                if (data.content) {
+                                    this.currentResponse += data.content;
+                                    this.appendToOutput(data.content);
+                                }
+                                
+                                if (data.done) {
+                                    this.appendToOutput(`\n`);
+                                    this.appendToOutput(`-`.repeat(50) + `\n`);
+                                    this.appendToOutput(`✅ Stream completed!\n`);
+                                    
+                                    // Store sources and metadata
+                                    if (data.sources) {
+                                        this.sources = data.sources;
+                                    }
+                                    if (data.metadata) {
+                                        this.metadata = data.metadata;
+                                    }
+                                    
+                                    this.showResponseInfo();
+                                    this.stopChat();
+                                    return;
+                                }
+                                
+                            } catch (error) {
+                                this.appendToOutput(`⚠️  JSON parse error: ${error.message}\n`);
+                            }
+                        }
+                    }
+                }
+                
+                this.eventSource.onopen = () => {
+                    this.showStatus('connected', 'SSE connection established!');
+                    this.appendToOutput(`✅ SSE connection established!\n`);
+                    this.appendToOutput(`📝 Response:\n`);
+                };
+                
+                this.eventSource.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.error) {
+                            this.appendToOutput(`❌ Error: ${data.error}\n`);
+                            this.stopChat();
+                            return;
+                        }
+                        
+                        if (data.content) {
+                            this.currentResponse += data.content;
+                            this.appendToOutput(data.content);
+                        }
+                        
+                        if (data.done) {
+                            this.appendToOutput(`\n`);
+                            this.appendToOutput(`-`.repeat(50) + `\n`);
+                            this.appendToOutput(`✅ Stream completed!\n`);
+                            
+                            // Store sources and metadata
+                            if (data.sources) {
+                                this.sources = data.sources;
+                            }
+                            if (data.metadata) {
+                                this.metadata = data.metadata;
+                            }
+                            
+                            this.showResponseInfo();
+                            this.stopChat();
+                        }
+                        
+                    } catch (error) {
+                        this.appendToOutput(`⚠️  JSON parse error: ${error.message}\n`);
+                    }
+                };
+                
+                this.eventSource.onerror = (error) => {
+                    this.appendToOutput(`❌ SSE error: ${error}\n`);
+                    this.showStatus('error', 'SSE connection error');
+                    this.setStreamingState(false);
+                };
+            }
+            
+            stopChat() {
+                if (this.eventSource) {
+                    this.eventSource.close();
+                    this.eventSource = null;
+                }
+                this.setStreamingState(false);
+                this.showStatus('connected', 'Chat completed');
+            }
+            
+            setStreamingState(streaming) {
+                this.isStreaming = streaming;
+                document.getElementById('submitBtn').disabled = streaming;
+                document.getElementById('stopBtn').disabled = !streaming;
+            }
+            
+            showStatus(type, message) {
+                const statusEl = document.getElementById('status');
+                statusEl.className = `status ${type}`;
+                statusEl.textContent = message;
+                statusEl.style.display = 'block';
+            }
+            
+            appendToOutput(text) {
+                const output = document.getElementById('chatOutput');
+                output.textContent += text;
+                output.scrollTop = output.scrollHeight;
+            }
+            
+            clearOutput() {
+                document.getElementById('chatOutput').textContent = 'Ready to chat! Click "Start Chat" to begin...';
+                document.getElementById('responseInfo').style.display = 'none';
+                this.currentResponse = '';
+                this.sources = [];
+                this.metadata = {};
+            }
+            
+            showResponseInfo() {
+                const infoEl = document.getElementById('responseInfo');
+                let html = '<h4>📊 Response Information</h4>';
+                
+                if (this.metadata.chunks_retrieved !== undefined) {
+                    html += `<p><strong>Chunks Retrieved:</strong> ${this.metadata.chunks_retrieved}</p>`;
+                }
+                if (this.metadata.processing_time_ms !== undefined) {
+                    html += `<p><strong>Processing Time:</strong> ${this.metadata.processing_time_ms}ms</p>`;
+                }
+                if (this.metadata.model_used) {
+                    html += `<p><strong>Model Used:</strong> ${this.metadata.model_used}</p>`;
+                }
+                
+                if (this.sources.length > 0) {
+                    html += '<h4>📚 Sources</h4><ul class="sources-list">';
+                    this.sources.forEach(source => {
+                        html += `<li><strong>${source.source}</strong> (relevance: ${source.relevance_score.toFixed(3)})<br>${source.content_preview}</li>`;
+                    });
+                    html += '</ul>';
+                }
+                
+                infoEl.innerHTML = html;
+                infoEl.style.display = 'block';
+            }
+        }
+        
+        // Initialize the chat when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new SSEChat();
+        });
+    </script>
+</body>
+</html> 
