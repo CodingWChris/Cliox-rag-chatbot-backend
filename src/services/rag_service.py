@@ -205,7 +205,7 @@ class RAGService:
                 relevant_chunks = vector_service.search_similar(
                     message, 
                     knowledge.chunks, 
-                    config.get("top_k", 3),
+                    config.get("top_k", 6),
                     session_id
                 )
                 
@@ -275,27 +275,8 @@ class RAGService:
             context_parts.append(f"[Source: {source}]\n{chunk.content}")
         return "\n\n---\n\n".join(context_parts)
     
-    def _build_rag_prompt_with_context(self, knowledge_context: str, message: str, conversation_context: str) -> str:
-        """Build RAG prompt with both knowledge base and conversation context"""
-        prompt_parts = ["You are a helpful AI assistant."]
-        
-        if conversation_context:
-            prompt_parts.append(f"Conversation context:\n{conversation_context}")
-        
-        prompt_parts.append(f"Relevant knowledge base information:\n{knowledge_context}")
-        
-        prompt_parts.append(f"Current question: {message}")
-        
-        prompt_parts.append("""Please provide a comprehensive answer that:
-            1. Uses the knowledge base information as your primary source
-            2. Considers the conversation context and history 
-            3. Maintains continuity with previous exchanges
-            4. Cites sources when using knowledge base information
 
-            Answer:""")
-        
-        return "\n\n".join(prompt_parts)
-    
+    # answer without KB but with chat history    
     def _build_general_prompt_with_context(self, message: str, conversation_context: str) -> str:
         """Build general prompt with conversation context (no knowledge base)"""
         prompt_parts = ["You are a helpful AI assistant."]
@@ -314,6 +295,58 @@ class RAGService:
         
         return "\n\n".join(prompt_parts)
     
+
+    # answer with KB and chat history
+    def _build_rag_prompt_with_context(self, knowledge_context: str, message: str, conversation_context: str) -> str:
+        """Build sophisticated RAG prompt with knowledge base priority and language matching"""
+        prompt_parts = [
+            "You are an expert AI assistant specializing in providing accurate, knowledge-based responses.",
+            "Your primary responsibility is to extract and synthesize information from the provided knowledge base."
+        ]
+        
+        if conversation_context:
+            prompt_parts.append(f"Previous conversation context:\n{conversation_context}")
+        
+        prompt_parts.append(f"Knowledge Base Content (PRIMARY SOURCE - use this information first):\n{knowledge_context}")
+        
+        prompt_parts.append(f"User Question: {message}")
+        
+        prompt_parts.append("""RESPONSE INSTRUCTIONS:
+
+        1. LANGUAGE MATCHING: Respond in the same language as the user's question. If the knowledge base is in a different language, translate the relevant information while maintaining accuracy.
+
+        2. KNOWLEDGE BASE PRIORITY: 
+        - Use the knowledge base content as your PRIMARY and PREFERRED source
+        - Extract specific facts, data, procedures, or concepts directly from the provided content
+        - Only supplement with general knowledge if the knowledge base doesn't fully address the question
+        - Clearly distinguish between knowledge base information and general knowledge
+
+        3. SOURCE CITATION:
+        - Always cite specific sources when using knowledge base information
+        - Use format: [Source: filename/document] for each piece of information
+        - If information comes from multiple sources, cite each one
+
+        4. CONVERSATION CONTINUITY:
+        - Reference previous discussion points when relevant
+        - Build upon previously established context
+        - Maintain consistency with earlier responses
+
+        5. RESPONSE STRUCTURE:
+        - Start with direct answers from the knowledge base
+        - Provide specific details and examples from the sources
+        - Add context or explanations if needed
+        - End with a clear, actionable summary if appropriate
+
+        6. ACCURACY REQUIREMENTS:
+        - If the knowledge base doesn't contain sufficient information, explicitly state this
+        - Do not make assumptions beyond what's provided in the knowledge base
+        - Acknowledge uncertainty when information is incomplete
+
+        Your Response:""")
+        
+        return "\n\n".join(prompt_parts)
+    
+
     # ==============================================
     # LEGACY HELPER METHODS
     # ==============================================
@@ -321,22 +354,23 @@ class RAGService:
     # non-streaming process_chat() method. They are not used by the 
     # streaming implementation which has more optimized prompt building.
     
-    def _build_rag_prompt(self, context: str, message: str) -> str:
-        """
-        LEGACY: Build RAG prompt for LLM - used when relevant chunks are found
+    # def _build_rag_prompt(self, context: str, message: str) -> str:
+    #     """
+    #     LEGACY: Build RAG prompt for LLM - used when relevant chunks are found
         
-        This is the legacy version without conversation context.
-        New streaming implementation uses _build_rag_prompt_with_context() instead.
-        """
-        return f"""You are a helpful AI assistant. Based on the following relevant knowledge base information:
+    #     This is the legacy version without conversation context.
+    #     New streaming implementation uses _build_rag_prompt_with_context() instead.
+    #     """
+    #     return f"""You are a helpful AI assistant. Based on the following relevant knowledge base information:
 
-        {context}
+    #     {context}
 
-        Question: {message}
+    #     Question: {message}
 
-        Please provide a comprehensive answer using the knowledge base information above as your primary source, and enhance it with your general knowledge where appropriate. Always cite the sources when using information from the knowledge base.
+    #     Please provide a comprehensive answer using the knowledge base information above as your primary source, and enhance it with your general knowledge where appropriate. Always cite the sources when using information from the knowledge base.
 
-        Answer:"""
+    #     Answer:"""
+
 
     def _build_general_prompt(self, message: str) -> str:
         """
