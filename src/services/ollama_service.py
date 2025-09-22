@@ -13,7 +13,7 @@ class OllamaRequest:
         model: str, 
         prompt: str, 
         temperature: float = 0.7, 
-        max_tokens: int = 500
+        max_tokens: int = 1500
     ):
         self.model = model
         self.prompt = prompt
