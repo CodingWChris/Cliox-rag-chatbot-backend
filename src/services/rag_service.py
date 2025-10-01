@@ -278,71 +278,66 @@ class RAGService:
 
     # answer without KB but with chat history    
     def _build_general_prompt_with_context(self, message: str, conversation_context: str) -> str:
-        """Build general prompt with conversation context (no knowledge base)"""
-        prompt_parts = ["You are a helpful AI assistant."]
+        """Build general prompt with conversation context (no knowledge base) - Optimized for 1B model"""
+        prompt_parts = []
         
+        # Very explicit system instruction with format constraints
+        prompt_parts.append("### ROLE ###\nYou are a helpful assistant.")
+        
+        # Add conversation context if available
         if conversation_context:
-            prompt_parts.append(f"Conversation context:\n{conversation_context}")
+            prompt_parts.append(f"### CONTEXT ###\n{conversation_context}")
         
-        prompt_parts.append(f"Current question: {message}")
+        # Clear user message with explicit label
+        prompt_parts.append(f"### USER QUESTION ###\n{message}")
         
-        prompt_parts.append("""Please provide a clear and informative answer that:
-            1. Considers the conversation context and history
-            2. Maintains continuity with previous exchanges
-            3. Builds on what has been discussed before
+        # Strong, explicit instructions with format constraints - LLM detects language automatically
+        prompt_parts.append("""### INSTRUCTIONS ###
+            - Answer ONLY the question above
+            - Do NOT repeat the question
+            - Do NOT show your thinking process
+            - Answer in the SAME language as the user's question
+            - Start your answer immediately
+            - Be direct and concise
 
-            Answer:""")
+            ### ANSWER ###""")
         
         return "\n\n".join(prompt_parts)
     
 
     # answer with KB and chat history
     def _build_rag_prompt_with_context(self, knowledge_context: str, message: str, conversation_context: str) -> str:
-        """Build sophisticated RAG prompt with knowledge base priority and language matching"""
-        prompt_parts = [
-            "You are an expert AI assistant specializing in providing accurate, knowledge-based responses.",
-            "Your primary responsibility is to extract and synthesize information from the provided knowledge base."
-        ]
+        """Build optimized RAG prompt with clear structure - Optimized for 1B model with automatic translation"""
+        prompt_parts = []
         
+        # Very explicit system role
+        prompt_parts.append("### ROLE ###\nYou are a knowledgeable assistant that provides accurate, helpful answers.")
+        
+        # Knowledge base section with clear demarcation
+        prompt_parts.append(f"### KNOWLEDGE BASE ###\n{knowledge_context}")
+        
+        # Add conversation context if available
         if conversation_context:
-            prompt_parts.append(f"Previous conversation context:\n{conversation_context}")
+            prompt_parts.append(f"### PREVIOUS CONVERSATION ###\n{conversation_context}")
         
-        prompt_parts.append(f"Knowledge Base Content (PRIMARY SOURCE - use this information first):\n{knowledge_context}")
+        # Clear user message section
+        prompt_parts.append(f"### USER QUESTION ###\n{message}")
         
-        prompt_parts.append(f"User Question: {message}")
-        
-        prompt_parts.append("""RESPONSE INSTRUCTIONS:
+        # Strong, explicit instructions with hierarchical information usage - LLM handles language detection and translation automatically
+        prompt_parts.append("""### INSTRUCTIONS ###
+- Use information in this priority order:
+  1. FIRST: Information from the KNOWLEDGE BASE (most important)
+  2. SECOND: Context from PREVIOUS CONVERSATION (if relevant)
+  3. THIRD: Your general knowledge (to supplement and enhance)
+- Do NOT repeat the question
+- Do NOT show your thinking process
+- Answer in the SAME language as the user's question
+- If the knowledge base is in a different language, translate the information to match the user's question language
+- Start your answer immediately
+- Be direct and concise
+- Combine all sources naturally to give the most complete answer
 
-        1. LANGUAGE MATCHING: Respond in the same language as the user's question. If the knowledge base is in a different language, translate the relevant information while maintaining accuracy.
-
-        2. KNOWLEDGE BASE PRIORITY: 
-        - Use the knowledge base content as your PRIMARY and PREFERRED source
-        - Extract specific facts, data, procedures, or concepts directly from the provided content
-        - Only supplement with general knowledge if the knowledge base doesn't fully address the question
-        - Clearly distinguish between knowledge base information and general knowledge
-
-        3. SOURCE CITATION:
-        - Always cite specific sources when using knowledge base information
-        - Use format: [Source: filename/document] for each piece of information
-        - If information comes from multiple sources, cite each one
-
-        4. CONVERSATION CONTINUITY:
-        - Reference previous discussion points when relevant
-        - Build upon previously established context
-        - Maintain consistency with earlier responses
-
-        5. RESPONSE STRUCTURE:
-        - Start with direct answers from the knowledge base
-        - Provide specific details and examples from the sources
-        - Add context or explanations if needed
-        - End with a clear, actionable summary if appropriate
-
-        6. ACCURACY REQUIREMENTS:
-        - If the knowledge base doesn't contain sufficient information, explicitly state this
-        - Do not make assumptions beyond what's provided in the knowledge base
-        - Acknowledge uncertainty when information is incomplete
-
-        Your Response:""")
+### ANSWER ###""")
         
         return "\n\n".join(prompt_parts)
     
@@ -374,16 +369,28 @@ class RAGService:
 
     def _build_general_prompt(self, message: str) -> str:
         """
-        LEGACY: Build general prompt for LLM without RAG context
+        LEGACY: Build general prompt for LLM without RAG context - Optimized for 1B model
         
         This is the legacy version without conversation context.
         New streaming implementation uses _build_general_prompt_with_context() instead.
         """
-        return f"""You are a helpful AI assistant. Please provide a clear and informative answer to the following question:
+        return f"""### ROLE ###
+You are a helpful assistant.
 
-        Question: {message}
+### USER QUESTION ###
+{message}
 
-        Answer:"""
+### INSTRUCTIONS ###
+- Answer ONLY the question above
+- Do NOT repeat the question
+- Do NOT show your thinking process
+- Answer in the SAME language as the user's question
+- Start your answer immediately
+- Be direct and concise
+
+### ANSWER ###"""
+
+
 
 # Global RAG service instance
 rag_service = RAGService() 
