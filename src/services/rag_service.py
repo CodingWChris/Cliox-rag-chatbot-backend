@@ -60,7 +60,7 @@ class RAGService:
             if not knowledge:
                 # Fallback to general LLM without RAG (but with conversation context)
                 logger.info("📝 No knowledge base found - using general LLM mode with conversation context")
-                prompt = self._build_general_prompt_with_context(message, conversation_context)
+                prompt = self._build_prompt(message, knowledge_context=None, conversation_context=conversation_context)
                 relevant_chunks = []
             else:
                 # Use RAG with knowledge base and conversation context
@@ -84,11 +84,11 @@ class RAGService:
                 if len(relevant_chunks) == 0:
                     # No relevant chunks found - fall back to general mode with context
                     logger.info("🔄 No relevant chunks found - falling back to general LLM mode with conversation context")
-                    prompt = self._build_general_prompt_with_context(message, conversation_context)
+                    prompt = self._build_prompt(message, knowledge_context=None, conversation_context=conversation_context)
                 else:
                     # Build RAG prompt with knowledge context and conversation context
                     knowledge_context = self._build_context(relevant_chunks)
-                    prompt = self._build_rag_prompt_with_context(knowledge_context, message, conversation_context)
+                    prompt = self._build_prompt(message, knowledge_context=knowledge_context, conversation_context=conversation_context)
             
             # 5. Call Ollama
             ollama_request = OllamaRequest(
@@ -198,7 +198,7 @@ class RAGService:
             
             # Same RAG logic
             if not knowledge:
-                prompt = self._build_general_prompt_with_context(message, conversation_context)
+                prompt = self._build_prompt(message, knowledge_context=None, conversation_context=conversation_context)
                 relevant_chunks = []
                 sources = []
             else:
@@ -210,11 +210,11 @@ class RAGService:
                 )
                 
                 if len(relevant_chunks) == 0:
-                    prompt = self._build_general_prompt_with_context(message, conversation_context)
+                    prompt = self._build_prompt(message, knowledge_context=None, conversation_context=conversation_context)
                     sources = []
                 else:
                     knowledge_context = self._build_context(relevant_chunks)
-                    prompt = self._build_rag_prompt_with_context(knowledge_context, message, conversation_context)
+                    prompt = self._build_prompt(message, knowledge_context=knowledge_context, conversation_context=conversation_context)
                     sources = [ChatSource(
                         source=chunk.metadata.get("source", "Unknown"),
                         relevance_score=chunk.similarity,
@@ -275,120 +275,72 @@ class RAGService:
             context_parts.append(f"[Source: {source}]\n{chunk.content}")
         return "\n\n---\n\n".join(context_parts)
     
-
-    # answer without KB but with chat history    
-    def _build_general_prompt_with_context(self, message: str, conversation_context: str) -> str:
-        """Build general prompt with conversation context (no knowledge base) - Optimized for 1B model"""
+    def _build_prompt(self, message: str, knowledge_context: str = None, conversation_context: str = None) -> str:
+        """
+        Unified prompt builder - Optimized for 1B model
+        
+        Args:
+            message: User's question
+            knowledge_context: Optional knowledge base chunks with sources
+            conversation_context: Optional conversation history
+        """
         prompt_parts = []
         
-        # Very explicit system instruction with format constraints
-        prompt_parts.append("### ROLE ###\nYou are a helpful assistant.")
+        # System role
+        if knowledge_context:
+            prompt_parts.append("### ROLE ###\nYou are a knowledgeable assistant that provides accurate answers with source citations.")
+        else:
+            prompt_parts.append("### ROLE ###\nYou are a helpful assistant.")
         
-        # Add conversation context if available
-        if conversation_context:
-            prompt_parts.append(f"### CONTEXT ###\n{conversation_context}")
+        # Knowledge base section (if provided)
+        if knowledge_context:
+            prompt_parts.append(f"### KNOWLEDGE BASE ###\n{knowledge_context}")
         
-        # Clear user message with explicit label
-        prompt_parts.append(f"### USER QUESTION ###\n{message}")
-        
-        # Strong, explicit instructions with format constraints - LLM detects language automatically
-        prompt_parts.append("""### INSTRUCTIONS ###
-            - Answer ONLY the question above
-            - Do NOT repeat the question
-            - Do NOT show your thinking process
-            - Answer in the SAME language as the user's question
-            - Start your answer immediately
-            - Be direct and concise
-
-            ### ANSWER ###""")
-        
-        return "\n\n".join(prompt_parts)
-    
-
-    # answer with KB and chat history
-    def _build_rag_prompt_with_context(self, knowledge_context: str, message: str, conversation_context: str) -> str:
-        """Build optimized RAG prompt with clear structure - Optimized for 1B model with automatic translation"""
-        prompt_parts = []
-        
-        # Very explicit system role
-        prompt_parts.append("### ROLE ###\nYou are a knowledgeable assistant that provides accurate, helpful answers.")
-        
-        # Knowledge base section with clear demarcation
-        prompt_parts.append(f"### KNOWLEDGE BASE ###\n{knowledge_context}")
-        
-        # Add conversation context if available
+        # Conversation context (if provided)
         if conversation_context:
             prompt_parts.append(f"### PREVIOUS CONVERSATION ###\n{conversation_context}")
         
-        # Clear user message section
+        # User question
         prompt_parts.append(f"### USER QUESTION ###\n{message}")
         
-        # Strong, explicit instructions with hierarchical information usage - LLM handles language detection and translation automatically
-        prompt_parts.append("""### INSTRUCTIONS ###
-- Use information in this priority order:
-  1. FIRST: Information from the KNOWLEDGE BASE (most important)
-  2. SECOND: Context from PREVIOUS CONVERSATION (if relevant)
-  3. THIRD: Your general knowledge (to supplement and enhance)
-- Do NOT repeat the question
-- Do NOT show your thinking process
-- Answer in the SAME language as the user's question
-- If the knowledge base is in a different language, translate the information to match the user's question language
-- Start your answer immediately
-- Be direct and concise
-- Combine all sources naturally to give the most complete answer
-
-### ANSWER ###""")
+        # Instructions (conditional based on what's available)
+        instructions = ["### INSTRUCTIONS ###"]
+        
+        if knowledge_context:
+            instructions.extend([
+                "- Use information in this priority order:",
+                "  1. FIRST: Information from KNOWLEDGE BASE (most important)",
+                "  2. SECOND: Context from PREVIOUS CONVERSATION (if relevant)",
+                "  3. THIRD: Your general knowledge (to supplement)",
+            ])
+        else:
+            instructions.append("- Answer the question above")
+        
+        instructions.extend([
+            "- Do NOT repeat the question",
+            "- Do NOT show your thinking process",
+            "- Answer in the SAME language as the user's question",
+            "- If knowledge base is in different language, translate it",
+        ])
+        
+        if knowledge_context:
+            instructions.extend([
+                "- IMPORTANT: Always cite sources using [Source: filename] format",
+                "- If using multiple sources, cite each one",
+            ])
+        
+        instructions.extend([
+            "- Start your answer immediately",
+            "- Be direct and concise",
+            "",
+            "### ANSWER ###"
+        ])
+        
+        prompt_parts.append("\n".join(instructions))
         
         return "\n\n".join(prompt_parts)
     
 
-    # ==============================================
-    # LEGACY HELPER METHODS
-    # ==============================================
-    # Note: These methods are kept for backward compatibility with the
-    # non-streaming process_chat() method. They are not used by the 
-    # streaming implementation which has more optimized prompt building.
-    
-    # def _build_rag_prompt(self, context: str, message: str) -> str:
-    #     """
-    #     LEGACY: Build RAG prompt for LLM - used when relevant chunks are found
-        
-    #     This is the legacy version without conversation context.
-    #     New streaming implementation uses _build_rag_prompt_with_context() instead.
-    #     """
-    #     return f"""You are a helpful AI assistant. Based on the following relevant knowledge base information:
-
-    #     {context}
-
-    #     Question: {message}
-
-    #     Please provide a comprehensive answer using the knowledge base information above as your primary source, and enhance it with your general knowledge where appropriate. Always cite the sources when using information from the knowledge base.
-
-    #     Answer:"""
-
-
-    def _build_general_prompt(self, message: str) -> str:
-        """
-        LEGACY: Build general prompt for LLM without RAG context - Optimized for 1B model
-        
-        This is the legacy version without conversation context.
-        New streaming implementation uses _build_general_prompt_with_context() instead.
-        """
-        return f"""### ROLE ###
-You are a helpful assistant.
-
-### USER QUESTION ###
-{message}
-
-### INSTRUCTIONS ###
-- Answer ONLY the question above
-- Do NOT repeat the question
-- Do NOT show your thinking process
-- Answer in the SAME language as the user's question
-- Start your answer immediately
-- Be direct and concise
-
-### ANSWER ###"""
 
 
 
