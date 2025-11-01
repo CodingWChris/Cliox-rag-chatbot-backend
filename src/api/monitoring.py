@@ -21,13 +21,23 @@ async def get_metrics():
         
         # Get vector service info
         from ..services.vector_service import vector_service
+        # Compute total vectors by summing counts from each ChromaDB collection
+        total_vectors = 0
+        try:
+            for collection_name in vector_service.session_collections.values():
+                try:
+                    collection = vector_service.chroma_client.get_collection(name=collection_name)
+                    total_vectors += collection.count()
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to count vectors for collection '{collection_name}': {e}")
+        except Exception as e:
+            logger.error(f"❌ Error computing total vector count: {e}")
+            total_vectors = 0
+
         vector_service_info = {
             "model": "all-MiniLM-L6-v2",
             "active_collections": len(vector_service.session_collections),
-            "total_vectors": sum(
-                len(collection) if hasattr(collection, '__len__') else 0 
-                for collection in vector_service.session_collections.values()
-            ) if vector_service.session_collections else 0
+            "total_vectors": total_vectors
         }
         
         return {
