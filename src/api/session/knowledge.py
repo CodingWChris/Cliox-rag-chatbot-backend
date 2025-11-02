@@ -89,9 +89,16 @@ async def get_knowledge_status(
     # Get detailed session stats including vector search info
     stats = session_service.get_session_stats(x_session_id)
     
+    # Prefer cumulative vector-store count when available; fall back to in-memory count
+    vector_chunk_count = 0
+    try:
+        vector_chunk_count = stats.get("vector_stats", {}).get("chunk_count", 0)
+    except Exception:
+        vector_chunk_count = 0
+
     return KnowledgeStatus(
         has_knowledge=stats["has_session"],
-        chunk_count=stats["chunk_count"],
+        chunk_count=vector_chunk_count if vector_chunk_count else stats["chunk_count"],
         session_id=x_session_id
     )
 
